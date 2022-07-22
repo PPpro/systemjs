@@ -239,6 +239,19 @@ function topLevelLoad (loader, load) {
 // the closest we can get to call(undefined)
 var nullContext = Object.freeze(Object.create(null));
 
+// Equivalent to `Promise.prototype.finally`
+// https://gist.github.com/developit/d970bac18430943e4b3392b029a2a96c
+var promisePrototypeFinally = Promise.prototype.finally || function (callback) {
+    if (typeof callback !== 'function') {
+        return this.then(callback, callback);
+    }
+    const P = this.constructor || Promise;
+    return this.then(
+        value => P.resolve(callback()).then(() => value),
+        err => P.resolve(callback()).then(() => { throw err; }),
+    );
+}
+
 // returns a promise if and only if a top-level await subgraph
 // throws on sync errors
 function postOrderExec (loader, load, seen) {
@@ -280,13 +293,13 @@ function postOrderExec (loader, load, seen) {
     }
   });
   if (depLoadPromises)
-    return load.E = Promise.all(depLoadPromises).then(doExec).finally(function() {
+    return load.E = promisePrototypeFinally.call(Promise.all(depLoadPromises).then(doExec), function() {
         load.E = null;
     });
 
   var execPromise = doExec();
   if (execPromise) {
-    return load.E = execPromise.finally(function() {
+    return load.E = promisePrototypeFinally.call(execPromise, function() {
         load.E = null;
     });
   }
